@@ -44,7 +44,15 @@ with st.sidebar.expander("Web check settings", expanded=False):
         "results directly, which Google may rate-limit or block - fine for "
         "occasional local use, not for production."
     )
-    gcse_api_key = st.text_input("Google API key (optional)", type="password")
+    try:
+        _secret_brave = st.secrets.get("BRAVE_API_KEY", "")
+    except Exception:
+        _secret_brave = ""
+    brave_key = st.text_input(
+        "Brave Search API key (recommended)", type="password", value=_secret_brave,
+        help="Free/cheap official API that works from cloud hosts. Get one at https://api-dashboard.search.brave.com/",
+    )
+    gcse_api_key = st.text_input("Google API key (optional, legacy)", type="password")
     gcse_cx = st.text_input("Search Engine ID / cx (optional)")
     compare_mode = st.radio("Compare against", ["Search snippet (fast)", "Full source page (slower)"])
     max_sentences_web = st.number_input(
@@ -55,11 +63,11 @@ with st.sidebar.expander("Web check settings", expanded=False):
 if st.sidebar.button("Test web search"):
     _t = check_sentence_online(
         "The quick brown fox jumps over the lazy dog near the river bank",
-        api_key=gcse_api_key or None, cx=gcse_cx or None, delay=0,
+        api_key=gcse_api_key or None, cx=gcse_cx or None, delay=0, brave_key=brave_key or None,
     )
-    if _t["status"] == "error":
+    if _t.get("status") == "error":
         st.sidebar.error(f"{_t['backend']} failed: {_t['error']}")
-    elif _t["status"] == "no_results":
+    elif _t.get("status") == "no_results":
         st.sidebar.warning(f"{_t['backend']} returned no results.")
     else:
         st.sidebar.success(f"Working via {_t['backend']}. Top hit: {_t['url']}")
@@ -129,11 +137,12 @@ with tab_analyze:
                     sentence,
                     api_key=gcse_api_key or None,
                     cx=gcse_cx or None,
+                    brave_key=brave_key or None,
                     compare_mode="page" if compare_mode.startswith("Full") else "snippet",
                 )
                 checked_online += 1
                 web_statuses.append(result)
-                row["Web status"] = result["status"]
+                row["Web status"] = result.get("status", "ok" if result.get("matched") else "no_results")
                 if result.get("matched"):
                     row["Web score"] = result["score"]
                     row["Source URL"] = result["url"]
@@ -151,13 +160,13 @@ with tab_analyze:
         progress.empty()
 
         if check_web:
-            errors = [r for r in web_statuses if r["status"] == "error"]
-            empty = [r for r in web_statuses if r["status"] == "no_results"]
+            errors = [r for r in web_statuses if r.get("status") == "error"]
+            empty = [r for r in web_statuses if r.get("status") == "no_results"]
             if web_statuses and len(errors) == len(web_statuses):
                 st.error(
-                    f"Web search failed for every sentence ({web_statuses[0]['backend']}): "
-                    f"{errors[0]['error']}. The 0% scores below mean 'not checked', not 'original'. "
-                    "Add a Google API key + cx in the sidebar, or use the 'Test web search' button."
+                    f"Web search failed for every sentence ({web_statuses[0].get('backend', 'unknown')}): "
+                    f"{errors[0].get('error', 'unknown error')}. The 0% scores below mean 'not checked', not 'original'. "
+                    "Add a Brave Search API key in the sidebar, or use the 'Test web search' button."
                 )
             elif errors or empty:
                 st.info(f"Web check: {len(web_statuses) - len(errors) - len(empty)} sentences matched a source, "

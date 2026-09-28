@@ -4,6 +4,7 @@ Web plagiarism check module.
 Looks a sentence up on the web and reports the best-matching source and
 how similar that source's text is. Backends, in order:
 
+0. Brave Search API when a key is supplied (works from cloud hosts).
 1. Google Programmable Search Engine (Custom Search JSON API) when an
    API key + cx are supplied - the supported way to query Google.
 2. Unofficial fallbacks when no credentials are given: Google HTML
@@ -47,6 +48,22 @@ def _search_via_cse(query: str, api_key: str, cx: str, num: int = 3) -> list[dic
     items = resp.json().get("items", [])
     return [
         {"title": i.get("title", ""), "url": i.get("link", ""), "snippet": i.get("snippet", "")}
+        for i in items
+    ]
+
+
+def _search_via_brave(query: str, api_key: str, num: int = 3) -> list[dict]:
+    resp = requests.get(
+        "https://api.search.brave.com/res/v1/web/search",
+        params={"q": query, "count": min(num, 20)},
+        headers={"Accept": "application/json", "X-Subscription-Token": api_key},
+        timeout=_TIMEOUT,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Brave API error {resp.status_code}: {resp.text[:200]}")
+    items = resp.json().get("web", {}).get("results", [])
+    return [
+        {"title": i.get("title", ""), "url": i.get("url", ""), "snippet": i.get("description", "")}
         for i in items
     ]
 
@@ -97,10 +114,16 @@ def _search_via_ddg(query: str, num: int = 3) -> list[dict]:
     return results
 
 
-def search(query: str, api_key: str | None, cx: str | None, num: int = 3):
+def search(query: str, api_key: str | None, cx: str | None, num: int = 3,
+           brave_key: str | None = None):
     """Returns (results, backend_name, error_message)."""
     words = query.split()
     query = " ".join(words[:30])  # search engines ignore very long queries
+    if brave_key:
+        try:
+            return _search_via_brave(query, brave_key, num), "Brave API", None
+        except Exception as exc:
+            return [], "Brave API", str(exc)
     if api_key and cx:
         try:
             return _search_via_cse(query, api_key, cx, num), "Google API", None
@@ -132,9 +155,9 @@ def fetch_page_text(url: str, max_chars: int = 4000) -> str | None:
 
 def check_sentence_online(sentence: str, api_key: str | None = None, cx: str | None = None,
                            compare_mode: str = "snippet", num_results: int = 3,
-                           delay: float = 1.0) -> dict:
+                           delay: float = 1.0, brave_key: str | None = None) -> dict:
     """Result always has 'status': 'ok' | 'no_results' | 'error', plus 'backend'."""
-    results, backend, error = search(sentence, api_key, cx, num_results)
+    results, backend, error = search(sentence, api_key, cx, num_results, brave_key=brave_key)
     time.sleep(delay)
     if error and not results:
         return {"status": "error", "matched": False, "backend": backend, "error": error}
