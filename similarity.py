@@ -86,3 +86,16 @@ def risk_level(score: float, low_threshold: float = 0.30, high_threshold: float 
 
 
 RISK_COLORS = {"Low": "#2ecc71", "Medium": "#f39c12", "High": "#e74c3c"}
+
+
+def phrase_containment(sentence: str, source: str) -> float:
+    """Fraction of the sentence's word bigrams that also appear in the
+    source text. High values mean the wording itself was copied, which
+    plain TF-IDF cosine underestimates when the source is a short snippet."""
+    s = normalize(sentence, remove_stopwords=False, lemmatize=False).split()
+    t = normalize(source, remove_stopwords=False, lemmatize=False).split()
+    if len(s) < 4 or len(t) < 2:
+        return 0.0
+    s_bigrams = set(zip(s, s[1:]))
+    t_bigrams = set(zip(t, t[1:]))
+    return len(s_bigrams & t_bigrams) / len(s_bigrams)

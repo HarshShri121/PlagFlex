@@ -52,6 +52,18 @@ with st.sidebar.expander("Web check settings", expanded=False):
         help="Caps how many sentences get sent to the search engine, to keep runtime and rate-limit risk reasonable.",
     )
 
+if st.sidebar.button("Test web search"):
+    _t = check_sentence_online(
+        "The quick brown fox jumps over the lazy dog near the river bank",
+        api_key=gcse_api_key or None, cx=gcse_cx or None, delay=0,
+    )
+    if _t["status"] == "error":
+        st.sidebar.error(f"{_t['backend']} failed: {_t['error']}")
+    elif _t["status"] == "no_results":
+        st.sidebar.warning(f"{_t['backend']} returned no results.")
+    else:
+        st.sidebar.success(f"Working via {_t['backend']}. Top hit: {_t['url']}")
+
 st.sidebar.info(
     f"Semantic (embedding) similarity: {'enabled' if semantic_on else 'unavailable - install `sentence-transformers` to enable'}"
 )
@@ -94,7 +106,15 @@ with tab_analyze:
             st.warning("Couldn't find any sentences in the input.")
             st.stop()
 
+        if not reference_text.strip() and not check_web:
+            st.warning(
+                "Nothing to compare against: upload a reference document and/or tick "
+                "'Also check each sentence against the web', otherwise every score is 0."
+            )
+            st.stop()
+
         rows = []
+        web_statuses = []
         progress = st.progress(0.0, text="Analyzing...")
         checked_online = 0
         for i, sentence in enumerate(sentences):
@@ -112,12 +132,14 @@ with tab_analyze:
                     compare_mode="page" if compare_mode.startswith("Full") else "snippet",
                 )
                 checked_online += 1
+                web_statuses.append(result)
+                row["Web status"] = result["status"]
                 if result.get("matched"):
                     row["Web score"] = result["score"]
                     row["Source URL"] = result["url"]
                 else:
                     row["Web score"] = 0.0
-                    row["Source URL"] = ""
+                    row["Source URL"] = result.get("error", "")
 
             best_score = max(
                 [v for k, v in row.items() if k.endswith("score")] or [0.0]
@@ -127,6 +149,19 @@ with tab_analyze:
             rows.append(row)
             progress.progress((i + 1) / len(sentences), text=f"Analyzing sentence {i + 1}/{len(sentences)}")
         progress.empty()
+
+        if check_web:
+            errors = [r for r in web_statuses if r["status"] == "error"]
+            empty = [r for r in web_statuses if r["status"] == "no_results"]
+            if web_statuses and len(errors) == len(web_statuses):
+                st.error(
+                    f"Web search failed for every sentence ({web_statuses[0]['backend']}): "
+                    f"{errors[0]['error']}. The 0% scores below mean 'not checked', not 'original'. "
+                    "Add a Google API key + cx in the sidebar, or use the 'Test web search' button."
+                )
+            elif errors or empty:
+                st.info(f"Web check: {len(web_statuses) - len(errors) - len(empty)} sentences matched a source, "
+                        f"{len(empty)} returned no results, {len(errors)} failed.")
 
         df = pd.DataFrame(rows)
         overall = df["Overall score"].mean() if len(df) else 0.0
