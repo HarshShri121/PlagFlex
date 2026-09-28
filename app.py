@@ -48,8 +48,16 @@ with st.sidebar.expander("Web check settings", expanded=False):
         _secret_brave = st.secrets.get("BRAVE_API_KEY", "")
     except Exception:
         _secret_brave = ""
+    try:
+        _secret_tavily = st.secrets.get("TAVILY_API_KEY", "")
+    except Exception:
+        _secret_tavily = ""
+    tavily_key = st.text_input(
+        "Tavily API key (recommended, free tier)", type="password", value=_secret_tavily,
+        help="1,000 free searches/month, no credit card. Sign up at https://tavily.com",
+    )
     brave_key = st.text_input(
-        "Brave Search API key (recommended)", type="password", value=_secret_brave,
+        "Brave Search API key (optional; card required)", type="password", value=_secret_brave,
         help="Free/cheap official API that works from cloud hosts. Get one at https://api-dashboard.search.brave.com/",
     )
     gcse_api_key = st.text_input("Google API key (optional, legacy)", type="password")
@@ -63,7 +71,7 @@ with st.sidebar.expander("Web check settings", expanded=False):
 if st.sidebar.button("Test web search"):
     _t = check_sentence_online(
         "The quick brown fox jumps over the lazy dog near the river bank",
-        api_key=gcse_api_key or None, cx=gcse_cx or None, delay=0, brave_key=brave_key or None,
+        api_key=gcse_api_key or None, cx=gcse_cx or None, delay=0, brave_key=brave_key or None, tavily_key=tavily_key or None,
     )
     if _t.get("status") == "error":
         st.sidebar.error(f"{_t['backend']} failed: {_t['error']}")
@@ -137,7 +145,7 @@ with tab_analyze:
                     sentence,
                     api_key=gcse_api_key or None,
                     cx=gcse_cx or None,
-                    brave_key=brave_key or None,
+                    brave_key=brave_key or None, tavily_key=tavily_key or None,
                     compare_mode="page" if compare_mode.startswith("Full") else "snippet",
                 )
                 checked_online += 1
@@ -166,7 +174,7 @@ with tab_analyze:
                 st.error(
                     f"Web search failed for every sentence ({web_statuses[0].get('backend', 'unknown')}): "
                     f"{errors[0].get('error', 'unknown error')}. The 0% scores below mean 'not checked', not 'original'. "
-                    "Add a Brave Search API key in the sidebar, or use the 'Test web search' button."
+                    "Add a Tavily (free) or Brave API key in the sidebar, or use the 'Test web search' button."
                 )
             elif errors or empty:
                 st.info(f"Web check: {len(web_statuses) - len(errors) - len(empty)} sentences matched a source, "

@@ -52,6 +52,22 @@ def _search_via_cse(query: str, api_key: str, cx: str, num: int = 3) -> list[dic
     ]
 
 
+def _search_via_tavily(query: str, api_key: str, num: int = 3) -> list[dict]:
+    resp = requests.post(
+        "https://api.tavily.com/search",
+        json={"query": query, "max_results": min(num, 20), "search_depth": "basic"},
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        timeout=_TIMEOUT,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Tavily API error {resp.status_code}: {resp.text[:200]}")
+    items = resp.json().get("results", [])
+    return [
+        {"title": i.get("title", ""), "url": i.get("url", ""), "snippet": i.get("content", "")}
+        for i in items
+    ]
+
+
 def _search_via_brave(query: str, api_key: str, num: int = 3) -> list[dict]:
     resp = requests.get(
         "https://api.search.brave.com/res/v1/web/search",
@@ -115,10 +131,15 @@ def _search_via_ddg(query: str, num: int = 3) -> list[dict]:
 
 
 def search(query: str, api_key: str | None, cx: str | None, num: int = 3,
-           brave_key: str | None = None):
+           brave_key: str | None = None, tavily_key: str | None = None):
     """Returns (results, backend_name, error_message)."""
     words = query.split()
     query = " ".join(words[:30])  # search engines ignore very long queries
+    if tavily_key:
+        try:
+            return _search_via_tavily(query, tavily_key, num), "Tavily API", None
+        except Exception as exc:
+            return [], "Tavily API", str(exc)
     if brave_key:
         try:
             return _search_via_brave(query, brave_key, num), "Brave API", None
@@ -155,9 +176,10 @@ def fetch_page_text(url: str, max_chars: int = 4000) -> str | None:
 
 def check_sentence_online(sentence: str, api_key: str | None = None, cx: str | None = None,
                            compare_mode: str = "snippet", num_results: int = 3,
-                           delay: float = 1.0, brave_key: str | None = None) -> dict:
+                           delay: float = 1.0, brave_key: str | None = None,
+                           tavily_key: str | None = None) -> dict:
     """Result always has 'status': 'ok' | 'no_results' | 'error', plus 'backend'."""
-    results, backend, error = search(sentence, api_key, cx, num_results, brave_key=brave_key)
+    results, backend, error = search(sentence, api_key, cx, num_results, brave_key=brave_key, tavily_key=tavily_key)
     time.sleep(delay)
     if error and not results:
         return {"status": "error", "matched": False, "backend": backend, "error": error}
