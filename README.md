@@ -6,7 +6,7 @@ interactive visualization, rebuilt to match the project report's design
 tiered risk classification → visualization/report), with an added web
 plagiarism check.
 
-## What's new vs. the original prototype
+## What's in !!
 
 - **Modular code**: `preprocessing.py`, `similarity.py`, `file_readers.py`,
   `web_check.py`, `app.py` (was a single `app.py`).
